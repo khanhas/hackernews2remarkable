@@ -1,0 +1,24 @@
+{
+  "name": "hackernews2remarkable",
+  "version": "1.0.0",
+  "description": "Fetch top articles from HackerNews, pack as EPUB and remotely send to Remarkable",
+  "main": "main.js",
+  "dependencies": {
+    "epub-gen": "^0.1.0",
+    "playwright": "^1.6.2"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khanhas/hackernews2remarkable.git"
+  },
+  "keywords": [
+    "remarkable-tablet"
+  ],
+  "author": "khanhas",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/khanhas/hackernews2remarkable/issues"
+  },
+  "homepage": "https://github.com/khanhas/hackernews2remarkable#readme"
+}
