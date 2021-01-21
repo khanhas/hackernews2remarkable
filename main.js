@@ -1,92 +1,111 @@
-const { firefox } = require('playwright');
-const epub = require('epub-gen');
-const { exec } = require("child_process");
+const epub = require("./lib/epub-gen");
+const { execSync } = require("child_process");
+const { writeFile, readFileSync } = require('fs');
+const { Readability } = require('@mozilla/readability');
+const { JSDOM } = require('jsdom');
+const { get } = require('https');
+const { v4: newUuid } = require("uuid");
 
-const ARTICLE_TIMEOUT = 10000;
-const TITLE = "HackerNews " + (new Date()).toDateString();
+const config = JSON.parse(readFileSync("./config.json"));
+const ROOT_COLLECTION_ID = config.root_collection_id;
 
+const dateStr = execSync("date +'%Y - %m - %d'").toString().trim();
+const folder = "/home/root/.local/share/remarkable/xochitl/";
+
+console.log("Creating folder...");
+const folderMeta = metadata(dateStr, ROOT_COLLECTION_ID, true); 
+const todayFolderId = newUuid();
+writeFile(folder + todayFolderId + ".metadata", folderMeta, () => {});
+
+// Main
 (async () => {
-    const browser = await firefox.launch({
-        // executablePath: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe'
-    });
-    const page = await browser.newPage();
+    console.log("Downloading news list...");
+    const hnRaw = await htmlRaw("https://news.ycombinator.com/news");
+    const hnParsed = new JSDOM(hnRaw);
+    const stories = hnParsed.window.document.getElementsByClassName("storylink");
 
-    async function fetchArticle(url) {
-        const page = await browser.newPage();
+    let numArticle = stories.length;
+    let numDone = 0;
 
-        await page.goto('about:reader?url=' + url);
+    console.log("Downloading articles and packing epubs...");
+    const arts = [...stories]
+        .map(url => url.getAttribute("href"))
+        .filter(url => url.startsWith("http") && !url.endsWith(".pdf"))
+        .map(url => article(url, todayFolderId)
+            .then(() => {
+                numDone++;
+                console.log("PROG:" + Math.round(numDone / numArticle * 100));
+            })
+            .catch(err => console.error(err))
+        );
 
-        const startCallback = Date.now();
+    await Promise.all(arts);
+    console.log("PROG:100");
+})();
 
-        let title = await page.innerText(".reader-title");
+function metadata(name, parent, isCollection) {
+    return `{
+    "deleted": false,
+    "lastModified": "1",
+    "lastOpenedPage": 0,
+    "metadatamodified": false,
+    "modified": false,
+    "parent": "${parent ? parent : ""}",
+    "pinned": false,
+    "synced": false,
+    "type": "${isCollection ? "CollectionType" : "DocumentType"}",
+    "version": 1,
+    "visibleName": "${name}"
+}`;
+}
 
-        while (title.length == 0) {
-            title = await page.innerText(".reader-title");
-            if (Date.now() - startCallback > ARTICLE_TIMEOUT) {
-                return undefined;
-            }
+function htmlRaw(url) {
+    if (url.startsWith("http:")) {
+        url = url.replace("http", "https");
+    }
+    return new Promise((resolve, reject) => {
+        let str = ""
+        try {
+            get(url, {}, res => {
+                res.on('data', (d) => {
+                    str += d;
+                });
+                res.on('error', (err) => reject(err));
+                res.on('end', () => resolve(str));
+            })
+            .on('error', (err) => reject(err));
+        } catch(err) {
+            reject(err);
         }
-        const author = [await page.innerText(".reader-credits")];
-        const data = await page.innerHTML(".moz-reader-content");
+    });
+}
 
-        console.log(title);
-
-        return ({
-            title,
-            data,
-            author,
-            url,
-        });
+async function article(url) {
+    const doc = new JSDOM(await htmlRaw(url), { url });
+    const reader = new Readability(doc.window.document);
+    const item = reader.parse();
+    
+    if (!item || !item.title || !item.content) {
+        return;
     }
 
-    await page.goto("https://news.ycombinator.com/news");
+    const uuid = newUuid();
+    const file = folder + uuid + ".epub";
+    const meta = metadata(item.title, todayFolderId);
+    writeFile(folder + uuid + ".metadata", meta, () => {});
 
-    const linkList = await page.$$eval(".storylink", nodes => nodes.map(a => a.href));
-    
-    //// Fetch articles sequently 
-    // const content = [];
-    // for (const link of linkList) {
-    //     const article = await fetchArticle(link);
-    //     if (!article) continue;
-    //     content.push(article);
-    //     break;
-    // }
-
-    /**
-     * Fetch all articles parallelly. If you receive too few articles, try:
-     *      - Increase ARTICLE_TIMEOUT
-     *      - or Use Fetch articles sequently above instead of this block below
-     */
-    let content = await Promise.all(linkList.map(fetchArticle));
-    content = content.filter(article => article);
-
-    // Output file name
-    const file = TITLE + ".epub";
-
-    const options = {
-        title: TITLE,
-        author: "HackerNews",
+    return await new epub({
+        title: item.title,
+        author: item.byline,
         output: file,
         version: 2,
-        tocTitle: TITLE,
-        content,
-    };
-
-    browser.close();
-
-    new epub(options).promise.then(() => {
-        console.log('EPUB Done');
-
-        // Send to Remarkable cloud
-        exec("rmapi put \"" + file + "\"", (err, stdout, stderr) => {
-            if (err || stderr) {
-                console.error(err || stderr);
-                return;
-            }
-
-            if (stdout) {
-                console.log(stdout);
-            }
-        })
-    });
-})();
+        appendChapterTitles: true,
+        content: [{
+            title: item.title,
+            data: item.content,
+            author: item.byline,
+            url: item.siteName,
+        }],
+        verbose: false,
+    }).promise;
+}
