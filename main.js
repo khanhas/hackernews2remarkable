@@ -6,7 +6,7 @@ const { JSDOM } = require('jsdom');
 const { get } = require('https');
 const { v4: newUuid } = require("uuid");
 
-const config = JSON.parse(readFileSync("./config.json"));
+const config = JSON.parse(readFileSync(__dirname + "/config.json"));
 const ROOT_COLLECTION_ID = config.root_collection_id;
 
 const dateStr = execSync("date +'%Y - %m - %d'").toString().trim();
