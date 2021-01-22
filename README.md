@@ -8,7 +8,8 @@ Fetch top articles from HackerNews, pack as EPUB right in your reMarkable device
 </p>
 
 ## Requirements
-This project is meant to run on reMarkable device, not your local machine. So there are few requirements you need to set up:
+**NOTE:** This project is meant to run on reMarkable device, not your PC machine. Since epub files are generated and stored locally, you do not need reMarkable Cloud.
+
 - [NodeJS](https://nodejs.org/) and `npm`
 You can easily install both with [toltec](https://github.com/toltec-dev/toltec/), a package manager for reMarakble devices:
 ```bash
