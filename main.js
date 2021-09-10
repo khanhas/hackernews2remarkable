@@ -93,6 +93,7 @@ async function article(url) {
     const file = folder + uuid + ".epub";
     const meta = metadata(item.title, todayFolderId);
     writeFile(folder + uuid + ".metadata", meta, () => {});
+    writeFile(folder + uuid + ".content", `{ "fileType": "epub" }`, () => {});
 
     return await new epub({
         title: item.title,
